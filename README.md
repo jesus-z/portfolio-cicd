@@ -96,6 +96,12 @@ El usuario de servicio debe pertenecer solo al grupo dedicado y tener los permis
 
 Cloudflare requiere una zona activa con nameservers delegados. El script actualiza el registro A del subdominio para apuntar a la IP pública de OCI y Caddy solicita el certificado HTTPS. Con `SITE_DOMAIN` vacío, el sitio se verifica por HTTP en la IP pública.
 
+## Acceso gratuito con Cloudflare Quick Tunnel
+
+Cada despliegue de `main` inicia `cloudflared` junto al sitio y agrega la URL pública `https://….trycloudflare.com` al resumen del workflow **Publicar y desplegar portafolio**. Abre esa URL y agrega `/api/health` para comprobar la API. No requiere dominio, zona, cuenta ni token de Cloudflare. Es un enlace temporal para la práctica; Cloudflare puede asignar otro cuando la VM o el túnel se reinicien.
+
+El dominio propio sigue disponible de forma opcional con `SITE_DOMAIN`, `CLOUDFLARE_ZONE_ID` y `CLOUDFLARE_API_TOKEN`, siguiendo los pasos de DNS más abajo.
+
 ## Demostrar el pipeline
 
 El código ya está publicado en la rama `dev` de [jesus-z/portfolio-cicd](https://github.com/jesus-z/portfolio-cicd). Si clonas el proyecto en otra computadora, usa:

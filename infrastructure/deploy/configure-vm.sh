@@ -22,8 +22,37 @@ for intento in {1..60}; do
   sleep 5
 done
 
-ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
+ansible_output=""
+if ansible_output="$(ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
   -i "$inventory" \
   infrastructure/deploy/playbook.yml \
   -e "portfolio_image=$PORTFOLIO_IMAGE" \
-  -e "site_address=${SITE_DOMAIN:-:80}"
+  -e "site_address=${SITE_DOMAIN:-:80}")"; then
+  printf '%s\n' "$ansible_output"
+else
+  printf '%s\n' "$ansible_output"
+  exit 1
+fi
+
+tunnel_url="$(printf '%s\n' "$ansible_output" | grep -Eo 'https://[[:alnum:]-]+[.]trycloudflare[.]com' | tail -n 1 || true)"
+if [[ -z "$tunnel_url" ]]; then
+  echo "Ansible no devolvió una URL de Cloudflare Quick Tunnel."
+  exit 1
+fi
+
+echo "Verificando que el Quick Tunnel sirva la API..."
+for intento in {1..30}; do
+  if curl --fail --silent --show-error --max-time 15 "$tunnel_url/api/health" 2>/dev/null | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+    break
+  fi
+  if [[ "$intento" == 30 ]]; then
+    echo "La URL del túnel no respondió correctamente a /api/health."
+    exit 1
+  fi
+  sleep 4
+done
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  printf '\n### URL gratuita de Cloudflare Quick Tunnel\n\n%s\n\n> Es temporal y puede cambiar cuando el túnel se reinicie.\n' "$tunnel_url" >> "$GITHUB_STEP_SUMMARY"
+fi
+echo "Quick Tunnel disponible: $tunnel_url"
