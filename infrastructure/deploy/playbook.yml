@@ -1,7 +1,6 @@
 ---
 - name: Configurar y desplegar el portafolio
-  hosts: localhost
-  connection: local
+  hosts: all
   become: true
   gather_facts: true
 
@@ -48,11 +47,12 @@
         state: started
         enabled: true
 
-    - name: Establecer política de entrada y abrir HTTP y HTTPS en el firewall
+    - name: Establecer política de entrada y permitir SSH, HTTP y HTTPS en el firewall
       ansible.builtin.shell: |
         set -eu
         ufw default deny incoming
         ufw default allow outgoing
+        ufw allow 22/tcp
         ufw allow 80/tcp
         ufw allow 443/tcp
         ufw --force enable
@@ -62,7 +62,7 @@
 
     - name: Verificar las reglas cargadas en iptables por UFW
       ansible.builtin.command: "iptables -C ufw-user-input -p tcp --dport {{ item }} -j ACCEPT"
-      loop: [80, 443]
+      loop: [22, 80, 443]
       changed_when: false
 
     - name: Crear directorio de despliegue
@@ -73,7 +73,7 @@
 
     - name: Copiar Compose y Caddyfile
       ansible.builtin.copy:
-        src: "{{ bundle_dir }}/{{ item }}"
+        src: "{{ playbook_dir }}/../../{{ item }}"
         dest: "/opt/portfolio/{{ item }}"
         mode: '0644'
       loop:
