@@ -120,11 +120,11 @@ resource "oci_core_security_list" "web" {
 
 resource "oci_core_subnet" "public" {
   compartment_id             = var.compartment_ocid
-  vcn_id                      = oci_core_vcn.portfolio.id
-  display_name                = "portfolio-cicd-public-subnet"
-  cidr_block                  = "10.40.1.0/24"
-  route_table_id              = oci_core_route_table.public.id
-  security_list_ids           = [oci_core_security_list.web.id]
+  vcn_id                     = oci_core_vcn.portfolio.id
+  display_name               = "portfolio-cicd-public-subnet"
+  cidr_block                 = "10.40.1.0/24"
+  route_table_id             = oci_core_route_table.public.id
+  security_list_ids          = [oci_core_security_list.web.id]
   prohibit_public_ip_on_vnic = false
   dns_label                  = "public"
 }
