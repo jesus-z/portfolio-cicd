@@ -125,9 +125,8 @@ resource "oci_core_subnet" "public" {
   cidr_block                  = "10.40.1.0/24"
   route_table_id              = oci_core_route_table.public.id
   security_list_ids           = [oci_core_security_list.web.id]
-  prohibit_public_ip_on_vnic  = false
-  prohibit_internet_ingress   = false
-  dns_label                   = "public"
+  prohibit_public_ip_on_vnic = false
+  dns_label                  = "public"
 }
 
 resource "oci_core_instance" "portfolio" {
@@ -143,7 +142,7 @@ resource "oci_core_instance" "portfolio" {
 
   create_vnic_details {
     subnet_id        = oci_core_subnet.public.id
-    assign_public_ip  = true
+    assign_public_ip = true
     display_name     = "portfolio-cicd-vnic"
   }
 
