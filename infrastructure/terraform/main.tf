@@ -1,158 +1,180 @@
 terraform {
-  required_version = ">= 1.10, < 2.0"
+  required_version = ">= 1.12, < 2.0"
+
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.0"
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 7.0"
     }
   }
-  backend "s3" {
-    use_lockfile = true
-    encrypt      = true
+
+  backend "oci" {
+    auth                = "APIKey"
+    config_file_profile = "DEFAULT"
   }
 }
 
-variable "region" {
-  type = string
+provider "oci" {
+  config_file_profile = "DEFAULT"
 }
 
-variable "instance_type" {
-  type    = string
-  default = "t3.micro"
+variable "compartment_ocid" {
+  description = "OCID del compartimento donde se crearán los recursos."
+  type        = string
 }
 
-provider "aws" {
-  region = var.region
-  default_tags {
-    tags = { Project = "portafolio-cicd" }
+variable "availability_domain" {
+  description = "Dominio de disponibilidad de la VM, por ejemplo Uocm:US-ASHBURN-AD-1."
+  type        = string
+}
+
+variable "image_ocid" {
+  description = "OCID de Ubuntu 24.04 para la arquitectura seleccionada."
+  type        = string
+}
+
+variable "ssh_public_key" {
+  description = "Clave pública que se instalará para el usuario ubuntu."
+  type        = string
+}
+
+variable "shape" {
+  description = "Forma OCI compatible con la arquitectura de la imagen."
+  type        = string
+  default     = "VM.Standard.A1.Flex"
+}
+
+variable "ocpus" {
+  type    = number
+  default = 1
+}
+
+variable "memory_in_gbs" {
+  type    = number
+  default = 6
+}
+
+resource "oci_core_vcn" "portfolio" {
+  compartment_id = var.compartment_ocid
+  display_name   = "portfolio-cicd-vcn"
+  cidr_block     = "10.40.0.0/16"
+  dns_label      = "portfoliocicd"
+}
+
+resource "oci_core_internet_gateway" "portfolio" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.portfolio.id
+  display_name   = "portfolio-cicd-internet-gateway"
+  enabled        = true
+}
+
+resource "oci_core_route_table" "public" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.portfolio.id
+  display_name   = "portfolio-cicd-public-routes"
+
+  route_rules {
+    destination       = "0.0.0.0/0"
+    destination_type  = "CIDR_BLOCK"
+    network_entity_id = oci_core_internet_gateway.portfolio.id
   }
 }
 
-data "aws_availability_zones" "available" {
-  state = "available"
-  filter {
-    name   = "zone-type"
-    values = ["availability-zone"]
-  }
-}
+resource "oci_core_security_list" "web" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.portfolio.id
+  display_name   = "portfolio-cicd-web-security"
 
-data "aws_ssm_parameter" "ubuntu" {
-  name = "/aws/service/canonical/ubuntu/server/noble/stable/current/amd64/hvm/ebs-gp3/ami-id"
-}
-
-resource "aws_vpc" "portfolio" {
-  cidr_block           = "10.40.0.0/16"
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-}
-
-resource "aws_subnet" "public" {
-  count                   = 2
-  vpc_id                  = aws_vpc.portfolio.id
-  cidr_block              = cidrsubnet(aws_vpc.portfolio.cidr_block, 8, count.index)
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch = false
-}
-
-resource "aws_internet_gateway" "public" {
-  vpc_id = aws_vpc.portfolio.id
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.portfolio.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.public.id
-  }
-}
-
-resource "aws_route_table_association" "public" {
-  count          = 2
-  subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
-}
-
-resource "aws_security_group" "web" {
-  name_prefix = "portfolio-web-"
-  description = "Public HTTP and HTTPS"
-  vpc_id      = aws_vpc.portfolio.id
-}
-
-resource "aws_vpc_security_group_ingress_rule" "web" {
-  for_each          = toset(["80", "443"])
-  security_group_id = aws_security_group.web.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "tcp"
-  from_port         = tonumber(each.key)
-  to_port           = tonumber(each.key)
-}
-
-resource "aws_vpc_security_group_egress_rule" "outbound" {
-  security_group_id = aws_security_group.web.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
-}
-
-data "aws_iam_policy_document" "ec2" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["ec2.amazonaws.com"]
+  ingress_security_rules {
+    protocol = "6"
+    source   = "0.0.0.0/0"
+    tcp_options {
+      min = 22
+      max = 22
     }
   }
-}
 
-resource "aws_iam_role" "vm" {
-  name_prefix        = "portfolio-vm-"
-  assume_role_policy = data.aws_iam_policy_document.ec2.json
-}
-
-resource "aws_iam_role_policy_attachment" "ssm" {
-  role       = aws_iam_role.vm.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-resource "aws_iam_instance_profile" "vm" {
-  name_prefix = "portfolio-vm-"
-  role        = aws_iam_role.vm.name
-}
-
-resource "aws_instance" "portfolio" {
-  ami                    = data.aws_ssm_parameter.ubuntu.insecure_value
-  instance_type          = var.instance_type
-  subnet_id              = aws_subnet.public[0].id
-  vpc_security_group_ids = [aws_security_group.web.id]
-  iam_instance_profile   = aws_iam_instance_profile.vm.name
-
-  metadata_options {
-    http_tokens = "required"
+  ingress_security_rules {
+    protocol = "6"
+    source   = "0.0.0.0/0"
+    tcp_options {
+      min = 80
+      max = 80
+    }
   }
 
-  root_block_device {
-    encrypted   = true
-    volume_type = "gp3"
-    volume_size = 12
+  ingress_security_rules {
+    protocol = "6"
+    source   = "0.0.0.0/0"
+    tcp_options {
+      min = 443
+      max = 443
+    }
   }
 
-  lifecycle {
-    ignore_changes = [ami]
+  egress_security_rules {
+    protocol    = "all"
+    destination = "0.0.0.0/0"
   }
-
-  depends_on = [aws_iam_role_policy_attachment.ssm, aws_route_table_association.public]
 }
 
-resource "aws_eip" "portfolio" {
-  domain   = "vpc"
-  instance = aws_instance.portfolio.id
+resource "oci_core_subnet" "public" {
+  compartment_id             = var.compartment_ocid
+  vcn_id                      = oci_core_vcn.portfolio.id
+  display_name                = "portfolio-cicd-public-subnet"
+  cidr_block                  = "10.40.1.0/24"
+  route_table_id              = oci_core_route_table.public.id
+  security_list_ids           = [oci_core_security_list.web.id]
+  prohibit_public_ip_on_vnic  = false
+  prohibit_internet_ingress   = false
+  dns_label                   = "public"
+}
 
-  depends_on = [aws_internet_gateway.public]
+resource "oci_core_instance" "portfolio" {
+  availability_domain = var.availability_domain
+  compartment_id      = var.compartment_ocid
+  display_name        = "portfolio-cicd"
+  shape               = var.shape
+
+  shape_config {
+    ocpus         = var.ocpus
+    memory_in_gbs = var.memory_in_gbs
+  }
+
+  create_vnic_details {
+    subnet_id        = oci_core_subnet.public.id
+    assign_public_ip  = true
+    display_name     = "portfolio-cicd-vnic"
+  }
+
+  source_details {
+    source_type             = "image"
+    source_id               = var.image_ocid
+    boot_volume_size_in_gbs = 50
+  }
+
+  metadata = {
+    ssh_authorized_keys = var.ssh_public_key
+  }
+
+  freeform_tags = {
+    Project = "portfolio-cicd"
+  }
+}
+
+data "oci_core_vnic_attachments" "portfolio" {
+  compartment_id = var.compartment_ocid
+  instance_id    = oci_core_instance.portfolio.id
+}
+
+data "oci_core_vnic" "portfolio" {
+  vnic_id = data.oci_core_vnic_attachments.portfolio.vnic_attachments[0].vnic_id
 }
 
 output "instance_id" {
-  value = aws_instance.portfolio.id
+  value = oci_core_instance.portfolio.id
 }
 
 output "public_ip" {
-  value = aws_eip.portfolio.public_ip
+  value = data.oci_core_vnic.portfolio.public_ip_address
 }

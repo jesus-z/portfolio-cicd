@@ -1,4 +1,5 @@
 name: Publicar y desplegar portafolio
+
 on:
   push:
     branches: [main]
@@ -17,14 +18,21 @@ jobs:
   production:
     needs: tests
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      id-token: write
+    timeout-minutes: 60
     env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
-      TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
+      OCI_REGION: ${{ vars.OCI_REGION }}
+      OCI_TENANCY_OCID: ${{ vars.OCI_TENANCY_OCID }}
+      OCI_USER_OCID: ${{ vars.OCI_USER_OCID }}
+      OCI_FINGERPRINT: ${{ vars.OCI_FINGERPRINT }}
+      OCI_NAMESPACE: ${{ vars.OCI_NAMESPACE }}
+      OCI_TF_STATE_BUCKET: ${{ vars.OCI_TF_STATE_BUCKET }}
+      OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
+      OCI_AVAILABILITY_DOMAIN: ${{ vars.OCI_AVAILABILITY_DOMAIN }}
+      OCI_IMAGE_OCID: ${{ vars.OCI_IMAGE_OCID }}
+      OCI_SSH_PUBLIC_KEY: ${{ vars.OCI_SSH_PUBLIC_KEY }}
+      OCI_SHAPE: ${{ vars.OCI_SHAPE }}
+      OCI_OCPUS: ${{ vars.OCI_OCPUS }}
+      OCI_MEMORY_GBS: ${{ vars.OCI_MEMORY_GBS }}
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
       SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
       CF_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
@@ -32,11 +40,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Comprobar configuración
         env:
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          for variable in AWS_REGION TF_STATE_BUCKET TF_STATE_REGION DOCKERHUB_USERNAME AWS_ROLE_ARN DOCKERHUB_TOKEN; do
+          for variable in OCI_REGION OCI_TENANCY_OCID OCI_USER_OCID OCI_FINGERPRINT OCI_NAMESPACE OCI_TF_STATE_BUCKET OCI_COMPARTMENT_OCID OCI_AVAILABILITY_DOMAIN OCI_IMAGE_OCID OCI_SSH_PUBLIC_KEY OCI_API_PRIVATE_KEY OCI_SSH_PRIVATE_KEY DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
             if [[ -z "${!variable}" ]]; then
               echo "::error::Falta configurar $variable en GitHub"
               exit 1
@@ -49,36 +58,56 @@ jobs:
             }
           fi
           echo "IMAGE_TAG=${DOCKERHUB_USERNAME}/portafolio-cicd:${GITHUB_SHA}" >> "$GITHUB_ENV"
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Construir y publicar en Docker Hub
+      - name: Construir y publicar imagen multi-arquitectura
         id: image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           tags: ${{ env.IMAGE_TAG }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+      - name: Preparar credenciales OCI
+        env:
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$HOME/.oci"
+          printf '%s\n' "$OCI_API_PRIVATE_KEY" > "$HOME/.oci/oci_api_key.pem"
+          chmod 600 "$HOME/.oci/oci_api_key.pem"
+          cat > "$HOME/.oci/config" <<EOF
+          [DEFAULT]
+          user=$OCI_USER_OCID
+          fingerprint=$OCI_FINGERPRINT
+          tenancy=$OCI_TENANCY_OCID
+          region=$OCI_REGION
+          key_file=$HOME/.oci/oci_api_key.pem
+          EOF
+          chmod 600 "$HOME/.oci/config"
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '1.14.0'
           terraform_wrapper: false
-      - name: Crear o actualizar infraestructura
+      - name: Crear o actualizar infraestructura OCI
         id: infra
         working-directory: infrastructure/terraform
         env:
-          TF_VAR_region: ${{ vars.AWS_REGION }}
+          TF_VAR_compartment_ocid: ${{ vars.OCI_COMPARTMENT_OCID }}
+          TF_VAR_availability_domain: ${{ vars.OCI_AVAILABILITY_DOMAIN }}
+          TF_VAR_image_ocid: ${{ vars.OCI_IMAGE_OCID }}
+          TF_VAR_ssh_public_key: ${{ vars.OCI_SSH_PUBLIC_KEY }}
+          TF_VAR_shape: ${{ vars.OCI_SHAPE || 'VM.Standard.A1.Flex' }}
+          TF_VAR_ocpus: ${{ vars.OCI_OCPUS || '1' }}
+          TF_VAR_memory_in_gbs: ${{ vars.OCI_MEMORY_GBS || '6' }}
         run: |
           terraform init -input=false \
-            -backend-config="bucket=$TF_STATE_BUCKET" \
-            -backend-config="region=$TF_STATE_REGION" \
+            -backend-config="bucket=$OCI_TF_STATE_BUCKET" \
+            -backend-config="namespace=$OCI_NAMESPACE" \
+            -backend-config="region=$OCI_REGION" \
             -backend-config="key=${GITHUB_REPOSITORY}/production.tfstate"
           terraform fmt -check
           terraform validate
@@ -92,11 +121,20 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           PUBLIC_IP: ${{ steps.infra.outputs.public_ip }}
         run: bash infrastructure/deploy/cloudflare.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Instalar Ansible
+        run: python -m pip install --disable-pip-version-check ansible-core
       - name: Configurar VM y arrancar Compose con Ansible
         env:
-          INSTANCE_ID: ${{ steps.infra.outputs.instance_id }}
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
           PORTFOLIO_IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/portafolio-cicd@${{ steps.image.outputs.digest }}
-        run: bash infrastructure/deploy/ssm.sh
+          PUBLIC_IP: ${{ steps.infra.outputs.public_ip }}
+        run: |
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/oci_ssh_key"
+          chmod 600 "$RUNNER_TEMP/oci_ssh_key"
+          bash infrastructure/deploy/configure-vm.sh
       - name: Verificar URL pública
         env:
           PUBLIC_IP: ${{ steps.infra.outputs.public_ip }}
@@ -105,4 +143,4 @@ jobs:
           if [[ -n "$SITE_DOMAIN" ]]; then url="https://$SITE_DOMAIN"; fi
           curl --fail --silent --show-error --retry 24 --retry-delay 5 --retry-all-errors --max-time 8 "$url/api/health" | jq -e '.status == "ok"'
           curl --fail --silent --show-error --max-time 10 "$url/" | sed -n '/<title>/p'
-          printf '### Portafolio publicado\n\n%s\n' "$url" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Portafolio publicado en OCI\n\n%s\n\nInstancia: `%s`\n' "$url" '${{ steps.infra.outputs.instance_id }}' >> "$GITHUB_STEP_SUMMARY"
