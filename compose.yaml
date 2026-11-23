@@ -1,0 +1,30 @@
+services:
+  portfolio:
+    image: ${PORTFOLIO_IMAGE:-portafolio:local}
+    restart: unless-stopped
+    volumes:
+      - portfolio-data:/app/backend/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      portfolio:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+volumes:
+  portfolio-data:
+  caddy-data:
+  caddy-config:

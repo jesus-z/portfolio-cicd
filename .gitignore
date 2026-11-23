@@ -1,0 +1,13 @@
+node_modules/
+dist/
+backend/data/
+data/
+test-results/
+playwright-report/
+.env
+.terraform/
+*.tfstate*
+*.tfplan
+*.tfvars
+!*.example.tfvars
+PORTFOLIO-redisenado-CICD.zip

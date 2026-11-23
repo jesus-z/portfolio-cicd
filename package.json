@@ -1,0 +1,25 @@
+{
+  "name": "portfolio-cicd",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "vite build --configLoader native && node scripts/copy-site.js",
+    "start": "node backend/start.js",
+    "test:unit": "node --test tests/unit.test.js",
+    "test:integration": "node --test tests/integration.test.js",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "express": "^4.22.2",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "vite": "^7.2.6"
+  }
+}

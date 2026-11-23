@@ -1,0 +1,29 @@
+.cv {
+  --primary-neon: var(--accent); --secondary-neon: var(--accent);
+  --accent-neon: var(--accent); --success-neon: var(--accent); --purple-neon: var(--accent);
+  --orange-neon: var(--accent); --green-neon: var(--accent);
+}
+.cv .section { margin-bottom: 30px; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; }
+.cv .section-header { margin-bottom: 22px; }
+.cv .hero-content { display: flow-root; }
+.cv .profile-avatar { float: right; margin: 0 0 12px 20px; max-width: 100px; }
+.cv .profile-avatar img { height: auto; border-radius: 14px; }
+.cv .stat-card, .cv .glass-card { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; overflow-wrap: anywhere; }
+.cv .two-col-grid, .cv .three-col-grid, .cv .four-col-grid, .cv .stats-grid, .cv .project-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.cv .timeline-item + .timeline-item, .cv .skill-bar-item + .skill-bar-item { margin-top: 18px; }
+.cv .skill-bar-track { height: 5px; background: var(--wash); border-radius: 8px; overflow: hidden; }
+.cv .skill-bar-fill { height: 100%; background: var(--accent); }
+.cv .skill-bar-header { display: flex; justify-content: space-between; gap: 10px; }
+.cv .skill-tag, .cv .project-tech span { display: inline-block; margin: 2px; padding: 3px 7px; border-radius: 6px; background: var(--wash); }
+.cv .skills-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv .project-links, .cv .social-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.cv .section a { color: var(--accent); text-decoration: underline; }
+.cv [style*="color: #fff"], .cv [style*="color: #e0e0e0"], .cv [style*="color: rgba(255"] { color: var(--ink) !important; }
+@media (max-width: 560px) { .cv .section { padding: 16px; } }
+@media print {
+  .cv { --paper: white; --bg: white; --ink: #111; --muted: #333; --accent: #282041; --line: #ccc; --wash: #eee; }
+  .cv .site-header { display: none; }
+  .cv .wrap { width: 100%; }
+  .cv .section { padding: 12px 0; margin: 0; border: 0; }
+  .cv .glass-card, .cv .timeline-item { break-inside: avoid; }
+}

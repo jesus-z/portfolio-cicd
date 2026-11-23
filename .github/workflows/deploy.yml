@@ -1,0 +1,108 @@
+name: Publicar y desplegar portafolio
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portfolio-production
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  production:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+      CF_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Comprobar configuración
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          for variable in AWS_REGION TF_STATE_BUCKET TF_STATE_REGION DOCKERHUB_USERNAME AWS_ROLE_ARN DOCKERHUB_TOKEN; do
+            if [[ -z "${!variable}" ]]; then
+              echo "::error::Falta configurar $variable en GitHub"
+              exit 1
+            fi
+          done
+          if [[ -n "$SITE_DOMAIN" ]]; then
+            [[ "$SITE_DOMAIN" =~ ^([a-z0-9][a-z0-9-]*\.)+[a-z]+$ && -n "$CF_ZONE_ID" && -n "$CF_API_TOKEN" ]] || {
+              echo "::error::Configura un subdominio válido y las credenciales de Cloudflare."
+              exit 1
+            }
+          fi
+          echo "IMAGE_TAG=${DOCKERHUB_USERNAME}/portafolio-cicd:${GITHUB_SHA}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Construir y publicar en Docker Hub
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE_TAG }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.14.0'
+          terraform_wrapper: false
+      - name: Crear o actualizar infraestructura
+        id: infra
+        working-directory: infrastructure/terraform
+        env:
+          TF_VAR_region: ${{ vars.AWS_REGION }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="region=$TF_STATE_REGION" \
+            -backend-config="key=${GITHUB_REPOSITORY}/production.tfstate"
+          terraform fmt -check
+          terraform validate
+          terraform plan -input=false -lock-timeout=5m -out=production.tfplan
+          terraform apply -input=false -lock-timeout=5m production.tfplan
+          echo "instance_id=$(terraform output -raw instance_id)" >> "$GITHUB_OUTPUT"
+          echo "public_ip=$(terraform output -raw public_ip)" >> "$GITHUB_OUTPUT"
+      - name: Actualizar DNS en Cloudflare
+        if: ${{ vars.SITE_DOMAIN != '' }}
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PUBLIC_IP: ${{ steps.infra.outputs.public_ip }}
+        run: bash infrastructure/deploy/cloudflare.sh
+      - name: Configurar VM y arrancar Compose con Ansible
+        env:
+          INSTANCE_ID: ${{ steps.infra.outputs.instance_id }}
+          PORTFOLIO_IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/portafolio-cicd@${{ steps.image.outputs.digest }}
+        run: bash infrastructure/deploy/ssm.sh
+      - name: Verificar URL pública
+        env:
+          PUBLIC_IP: ${{ steps.infra.outputs.public_ip }}
+        run: |
+          url="http://$PUBLIC_IP"
+          if [[ -n "$SITE_DOMAIN" ]]; then url="https://$SITE_DOMAIN"; fi
+          curl --fail --silent --show-error --retry 24 --retry-delay 5 --retry-all-errors --max-time 8 "$url/api/health" | jq -e '.status == "ok"'
+          curl --fail --silent --show-error --max-time 10 "$url/" | sed -n '/<title>/p'
+          printf '### Portafolio publicado\n\n%s\n' "$url" >> "$GITHUB_STEP_SUMMARY"
