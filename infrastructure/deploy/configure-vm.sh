@@ -34,7 +34,7 @@ else
   exit 1
 fi
 
-tunnel_url="$(printf '%s\n' "$ansible_output" | grep -Eo 'https://[[:alnum:]-]+\.trycloudflare\.com' | tail -n 1 || true)"
+tunnel_url="$(printf '%s\n' "$ansible_output" | grep -Eo 'https://[[:alnum:]-]+[.]trycloudflare[.]com' | tail -n 1 || true)"
 if [[ -z "$tunnel_url" ]]; then
   echo "Ansible no devolvió una URL de Cloudflare Quick Tunnel."
   exit 1
