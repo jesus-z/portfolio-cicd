@@ -100,9 +100,9 @@ jobs:
           TF_VAR_availability_domain: ${{ vars.OCI_AVAILABILITY_DOMAIN }}
           TF_VAR_image_ocid: ${{ vars.OCI_IMAGE_OCID }}
           TF_VAR_ssh_public_key: ${{ vars.OCI_SSH_PUBLIC_KEY }}
-          TF_VAR_shape: ${{ vars.OCI_SHAPE || 'VM.Standard.A1.Flex' }}
+          TF_VAR_shape: ${{ vars.OCI_SHAPE || 'VM.Standard.E2.1.Micro' }}
           TF_VAR_ocpus: ${{ vars.OCI_OCPUS || '1' }}
-          TF_VAR_memory_in_gbs: ${{ vars.OCI_MEMORY_GBS || '6' }}
+          TF_VAR_memory_in_gbs: ${{ vars.OCI_MEMORY_GBS || '1' }}
         run: |
           terraform init -input=false \
             -backend-config="bucket=$OCI_TF_STATE_BUCKET" \
