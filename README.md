@@ -63,8 +63,8 @@ El sitio queda en http://localhost. Para detenerlo, usa `docker compose down`. E
 ## Configurar GitHub, Docker Hub y Oracle Cloud
 
 1. En OCI crea un bucket privado de Object Storage en la región elegida, activa el versionado y anota su nombre y el namespace de Object Storage. Terraform guarda el estado en `jesus-z/portfolio-cicd/production.tfstate`; el backend OCI bloquea el estado durante `plan`, `apply` y `destroy`.
-2. En OCI crea o elige un compartimento. Desde el perfil de usuario, agrega una API signing key y guarda la clave privada PEM. Copia el tenancy OCID, user OCID y fingerprint. La API key da acceso a Terraform según las políticas OCI asignadas al usuario; evita usar un usuario administrador permanente si puedes limitar permisos al compartimento y al bucket.
-3. Elige la región y el availability domain. En esa región busca la imagen **Ubuntu 24.04** que corresponda a la arquitectura. La configuración predeterminada usa `VM.Standard.A1.Flex` (Arm) con 1 OCPU y 6 GB; ajusta el shape y la imagen juntos si eliges AMD/x86. OCI puede no tener capacidad disponible para A1 en algunos dominios.
+2. Usa un compartimento dedicado para este proyecto y una identidad de servicio separada de tu usuario personal. La plantilla `infrastructure/deploy/oci-policy.example.txt` muestra permisos acotados para Compute, red y volúmenes dentro del compartimento, lectura de imágenes y acceso a objetos solo en el bucket de estado. Crea el grupo y la política desde **Identity & Security → Policies**; asigna el usuario de servicio únicamente a ese grupo. No lo agregues a `Administrators`. Registra una API signing key para ese usuario y guarda la clave privada PEM como secreto `OCI_API_PRIVATE_KEY`; configura su user OCID y fingerprint como variables de Actions.
+3. Elige la región y el availability domain. En esa región elige **Canonical Ubuntu 24.04 Minimal aarch64** para el shape Arm `VM.Standard.A1.Flex` (1 OCPU y 6 GB por defecto). Usa el availability domain que te muestre la consola para esa región. Si eliges AMD/x86, cambia juntos el shape y la imagen. OCI puede no tener capacidad disponible para A1 en algunos dominios.
 4. Crea un par de claves SSH. La clave pública se instala en la VM; guarda la privada como secreto de GitHub para que Ansible se conecte durante el despliegue. No pegues la clave privada en el repositorio.
 5. En Docker Hub usa el repositorio público `portafolio-cicd` y un token con permiso de lectura/escritura. La VM descarga la imagen pública por digest.
 6. En GitHub abre **Settings → Secrets and variables → Actions** y configura estos valores:
@@ -74,7 +74,7 @@ El sitio queda en http://localhost. Para detenerlo, usa `docker compose down`. E
 | Variable | `DOCKERHUB_USERNAME` | Usuario de Docker Hub, en minúsculas |
 | Variable | `OCI_REGION` | Región OCI, por ejemplo `us-ashburn-1` |
 | Variable | `OCI_TENANCY_OCID` | OCID de tenancy |
-| Variable | `OCI_USER_OCID` | OCID del usuario que firma las llamadas API |
+| Variable | `OCI_USER_OCID` | OCID del usuario de servicio que firma las llamadas API |
 | Variable | `OCI_FINGERPRINT` | Fingerprint de la API signing key |
 | Variable | `OCI_NAMESPACE` | Namespace de Object Storage |
 | Variable | `OCI_TF_STATE_BUCKET` | Nombre del bucket de estado |
@@ -92,7 +92,7 @@ El sitio queda en http://localhost. Para detenerlo, usa `docker compose down`. E
 | Variable, extra | `CLOUDFLARE_ZONE_ID` | Zone ID de la zona activa en Cloudflare |
 | Secret, extra | `CLOUDFLARE_API_TOKEN` | Token de Cloudflare con **Zone → DNS → Edit** |
 
-El usuario de la API OCI debe tener permisos para administrar Compute, VCN y Object Storage en el compartimento y leer/escribir/eliminar objetos en el bucket de estado. El bucket debe existir antes del primer `terraform init`.
+El usuario de servicio debe pertenecer solo al grupo dedicado y tener los permisos de `infrastructure/deploy/oci-policy.example.txt`. El bucket debe existir antes del primer `terraform init`.
 
 Cloudflare requiere una zona activa con nameservers delegados. El script actualiza el registro A del subdominio para apuntar a la IP pública de OCI y Caddy solicita el certificado HTTPS. Con `SITE_DOMAIN` vacío, el sitio se verifica por HTTP en la IP pública.
 
