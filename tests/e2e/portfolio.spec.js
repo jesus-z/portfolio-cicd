@@ -29,10 +29,10 @@ test('React muestra los datos que devuelve Express desde SQLite', async ({ page 
 test('Conserva el tema al recargar y permite abrir el CV', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' })
   await page.goto('/')
-  await page.getByRole('button', { name: 'Tema oscuro' }).click()
+  await page.getByRole('button', { name: 'Cambiar tema' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Tema oscuro' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Cambiar tema' })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('link', { name: 'Ver mi CV' }).click()
   await expect(page).toHaveURL(/resumen\.html$/)
   await expect(page.getByRole('button', { name: 'Imprimir o guardar PDF' })).toBeVisible()

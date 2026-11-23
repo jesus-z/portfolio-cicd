@@ -131,7 +131,7 @@ h2 { font-size: clamp(2rem, 4.5vw, 3.75rem); letter-spacing: -.065em; font-weigh
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; transition: none !important; }
   .motion-ready .reveal { opacity: 1; transform: none; }
 }
 
