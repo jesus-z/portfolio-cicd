@@ -7,7 +7,7 @@ export default defineConfig({
     outDir: '../dist',
     emptyOutDir: true,
     rollupOptions: {
-      input: 'src/projects.jsx',
+      input: 'frontend/src/projects.jsx',
       output: { entryFileNames: 'projects.js' }
     }
   }
