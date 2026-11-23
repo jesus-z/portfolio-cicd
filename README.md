@@ -1,6 +1,6 @@
 # PORTAFOLIO cyberpunk con CI/CD
 
-Rediseño responsive de [jesus-z/PORTFOLIO](https://github.com/jesus-z/PORTFOLIO). La portada usa el retrato original en WebP con respaldo PNG. Incluye modo claro y oscuro, música bajo demanda y un CV con estilos para imprimir o guardar como PDF.
+Portafolio personal responsive con frontend, backend, SQLite y despliegue CI/CD. La portada usa el retrato original en WebP con respaldo PNG. Incluye modo claro y oscuro, música bajo demanda y un CV con estilos para imprimir o guardar como PDF.
 
 Vite empaqueta el módulo de React y el paso de compilación incluye las tres tarjetas en el HTML. React actualiza los proyectos con `GET /api/projects` en Express, que lee los datos desde SQLite. Si la API falla o JavaScript está desactivado, el HTML de la compilación conserva las tarjetas. Se conservan las secciones de trayectoria, formación, habilidades e idiomas, junto con el ambiente cyberpunk: cursor visual, carga breve, barra de lectura, partículas acotadas, red y lluvia Matrix, retrato holográfico, controles flotantes, contadores, ripple y visualizador de audio. Los elementos animados son finitos o reutilizados y priorizan `transform` y `opacity`; no se crean partículas en bucles permanentes. El movimiento reducido respeta `prefers-reduced-motion` y la portada conserva su contenido aunque falten APIs de animación.
 
@@ -63,8 +63,8 @@ El sitio queda en http://localhost. Para detenerlo, usa `docker compose down`. E
 ## Configurar GitHub, Docker Hub y AWS
 
 1. En Docker Hub crea un repositorio **público** llamado `portafolio-cicd`. Genera un token de Docker Hub con permiso de escritura. La VM descarga la imagen pública por digest.
-2. En AWS crea un bucket S3 privado, con bloqueo de acceso público, cifrado y versionado. Terraform guarda el estado en la clave `OWNER/REPO/production.tfstate` y usa un objeto `.tflock` para el bloqueo.
-3. En AWS IAM registra el proveedor OIDC `https://token.actions.githubusercontent.com` con audiencia `sts.amazonaws.com`, si tu cuenta todavía no lo tiene. Crea un rol para el workflow y limita su condición de confianza al repositorio y la rama `main`. Usa [aws-trust.example.json](infrastructure/deploy/aws-trust.example.json) como plantilla. Reemplaza `ACCOUNT_ID` y usa `jesus-z/PORTFOLIO` como `OWNER/REPO`.
+2. En AWS crea un bucket S3 privado, con bloqueo de acceso público, cifrado y versionado. Terraform guarda el estado en la clave `jesus-z/portfolio-cicd/production.tfstate` y usa un objeto `.tflock` para el bloqueo.
+3. En AWS IAM registra el proveedor OIDC `https://token.actions.githubusercontent.com` con audiencia `sts.amazonaws.com`, si tu cuenta todavía no lo tiene. Crea un rol para el workflow y limita su condición de confianza al repositorio y la rama `main`. Usa [aws-trust.example.json](infrastructure/deploy/aws-trust.example.json) como plantilla. Reemplaza `ACCOUNT_ID` y usa `jesus-z/portfolio-cicd` como `OWNER/REPO`.
 4. Adjunta al rol una política de permisos para el laboratorio. Usa [aws-permissions.example.json](infrastructure/deploy/aws-permissions.example.json) como plantilla y reemplaza ACCOUNT_ID, AWS_REGION, TF_STATE_BUCKET y OWNER/REPO. La política cubre EC2, IAM, el estado S3 y Systems Manager. Adapta los permisos si tu cuenta aplica restricciones de organización.
 5. En GitHub abre **Settings → Secrets and variables → Actions** y agrega estos valores.
 
@@ -84,23 +84,15 @@ Cloudflare requiere una zona activa con sus nameservers ya delegados. Usa un sub
 
 ## Demostrar el pipeline
 
-Clona tu repositorio y crea `dev` a partir de `main`:
+El código ya está publicado en la rama `dev` de [jesus-z/portfolio-cicd](https://github.com/jesus-z/portfolio-cicd). Si clonas el proyecto en otra computadora, usa:
 
 ```bash
-git clone https://github.com/jesus-z/PORTFOLIO.git
-cd PORTFOLIO
-git switch -c dev
+git clone https://github.com/jesus-z/portfolio-cicd.git
+cd portfolio-cicd
+git switch dev
 ```
 
-Extrae el ZIP sobre esa carpeta. Incluye los archivos originales y la carpeta `.github`. En la carpeta del repositorio, ejecuta:
-
-```bash
-git add .
-git commit -m "Adaptar portafolio a la practica de CI/CD"
-git push -u origin dev
-```
-
-En **Actions**, abre **Pruebas automatizadas** y revisa las nueve pruebas. Con Docker Hub y AWS ya configurados, integra `dev` en `main` para activar el despliegue:
+Cada `push` a `dev` ejecuta las nueve pruebas. Cuando termines la configuración de Docker Hub y AWS en GitHub, integra `dev` en `main` para activar el despliegue:
 
 ```bash
 git switch main
