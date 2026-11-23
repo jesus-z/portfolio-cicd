@@ -110,3 +110,115 @@
     - name: Mostrar URL del Quick Tunnel en el registro de Ansible
       ansible.builtin.debug:
         msg: "QUICK_TUNNEL_URL={{ quick_tunnel.stdout }}"
+---
+- name: Configurar y desplegar el portafolio
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Instalar Git y dependencias del host
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - git
+          - ufw
+          - iptables
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Crear directorio de llaves de APT
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Descargar llave del repositorio de Docker
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Configurar repositorio de Docker
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        filename: docker
+        state: present
+
+    - name: Instalar Docker Engine y Docker Compose
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+
+    - name: Activar Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Establecer política de entrada y permitir SSH, HTTP y HTTPS en el firewall
+      ansible.builtin.shell: |
+        set -eu
+        ufw default deny incoming
+        ufw default allow outgoing
+        ufw allow 22/tcp
+        ufw allow 80/tcp
+        ufw allow 443/tcp
+        ufw --force enable
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Verificar las reglas cargadas en iptables por UFW
+      ansible.builtin.command: "iptables -C ufw-user-input -p tcp --dport {{ item }} -j ACCEPT"
+      loop: [22, 80, 443]
+      changed_when: false
+
+    - name: Crear directorio de despliegue
+      ansible.builtin.file:
+        path: /opt/portfolio
+        state: directory
+        mode: '0755'
+
+    - name: Copiar Compose y Caddyfile
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../{{ item }}"
+        dest: "/opt/portfolio/{{ item }}"
+        mode: '0644'
+      loop:
+        - compose.yaml
+        - Caddyfile
+
+    - name: Escribir configuración del despliegue
+      ansible.builtin.copy:
+        dest: /opt/portfolio/.env
+        mode: '0644'
+        content: |
+          PORTFOLIO_IMAGE={{ portfolio_image }}
+          SITE_ADDRESS={{ site_address }}
+
+    - name: Descargar imágenes y verificar estado de los contenedores
+      ansible.builtin.command: docker compose up -d --pull always --force-recreate --wait --wait-timeout 120
+      args:
+        chdir: /opt/portfolio
+      changed_when: true
+
+    - name: Esperar a que Cloudflare publique la URL del Quick Tunnel
+      ansible.builtin.shell: >-
+        docker compose logs --no-color --tail=100 cloudflared 2>&1
+        | grep -Eo 'https://[[:alnum:]-]+\.trycloudflare\.com'
+        | tail -n 1
+      args:
+        chdir: /opt/portfolio
+      register: quick_tunnel
+      retries: 36
+      delay: 5
+      until: quick_tunnel.stdout | length > 0
+      changed_when: false
+
+    - name: Mostrar URL del Quick Tunnel en el registro de Ansible
+      ansible.builtin.debug:
+        msg: "QUICK_TUNNEL_URL={{ quick_tunnel.stdout }}"
