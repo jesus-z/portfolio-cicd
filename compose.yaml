@@ -24,10 +24,6 @@ services:
       - caddy-config:/config
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
-volumes:
-  portfolio-data:
-  caddy-data:
-  caddy-config:
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
@@ -35,3 +31,8 @@ volumes:
       proxy:
         condition: service_started
     command: ["tunnel", "--no-autoupdate", "--url", "http://proxy:80"]
+
+volumes:
+  portfolio-data:
+  caddy-data:
+  caddy-config:
