@@ -28,3 +28,10 @@ volumes:
   portfolio-data:
   caddy-data:
   caddy-config:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      proxy:
+        condition: service_started
+    command: ["tunnel", "--no-autoupdate", "--url", "http://proxy:80"]
