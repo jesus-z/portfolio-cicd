@@ -41,7 +41,7 @@ variable "ssh_public_key" {
 variable "shape" {
   description = "Forma OCI compatible con la arquitectura de la imagen."
   type        = string
-  default     = "VM.Standard.A1.Flex"
+  default     = "VM.Standard.E2.1.Micro"
 }
 
 variable "ocpus" {
@@ -51,7 +51,7 @@ variable "ocpus" {
 
 variable "memory_in_gbs" {
   type    = number
-  default = 6
+  default = 1
 }
 
 resource "oci_core_vcn" "portfolio" {
@@ -135,9 +135,12 @@ resource "oci_core_instance" "portfolio" {
   display_name        = "portfolio-cicd"
   shape               = var.shape
 
-  shape_config {
-    ocpus         = var.ocpus
-    memory_in_gbs = var.memory_in_gbs
+  dynamic "shape_config" {
+    for_each = endswith(var.shape, ".Flex") ? [1] : []
+    content {
+      ocpus         = var.ocpus
+      memory_in_gbs = var.memory_in_gbs
+    }
   }
 
   create_vnic_details {
