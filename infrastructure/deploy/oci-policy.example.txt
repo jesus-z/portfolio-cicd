@@ -1,0 +1,10 @@
+# OCI IAM policy example for the portfolio deployment identity
+# Replace the group, compartment, and bucket names with your values.
+# Create this policy in the tenancy root so the object-storage statement can
+# reference a tenancy-level bucket by name.
+
+Allow group portfolio-cicd-deployers to manage instance-family in compartment portfolio-cicd
+Allow group portfolio-cicd-deployers to read instance-images in tenancy
+Allow group portfolio-cicd-deployers to manage volume-family in compartment portfolio-cicd
+Allow group portfolio-cicd-deployers to manage virtual-network-family in compartment portfolio-cicd
+Allow group portfolio-cicd-deployers to manage objects in tenancy where target.bucket.name = 'TF_STATE_BUCKET'
